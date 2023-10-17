@@ -7,19 +7,11 @@
 #include <QLayout>
 #include <QListWidget>
 
-#include <QPainter>
-#include <QPen>
-#include <vector>
-#include <QVBoxLayout>
-#include <cmath>
-#include <QTimer>
-#include <QList>
-#include <QVector>
-#include <QPoint>
-
 class ObjetoGrafico {
 public:
-    virtual ~ObjetoGrafico() {}
+    ObjetoGrafico(QVector<qreal> coordenadas, QPen pen) :
+        coordenadas(coordenadas), pen(pen), cor(Qt::black) {
+    }
 
     virtual void desenhar(QPainter& painter) = 0;
     virtual bool contemPonto(const QPoint& ponto) const = 0;
@@ -40,6 +32,10 @@ public:
 
 protected:
     bool selecionado = false;
+    QList<qreal> coordenadas;
+    QPen pen;
+    QColor cor = Qt::black;
+
     //float anguloRotacao = 45.0;
     //float fatorEscalaX = 2.0;
     //float fatorEscalaY = 2.0;
@@ -47,7 +43,7 @@ protected:
 
 class Ponto : public ObjetoGrafico {
 public:
-    Ponto(QVector<qreal> coordenadas, QPen pen) : coordenadas(coordenadas), pen(pen) {
+    Ponto(QVector<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {
         x = coordenadas[0];
         y = coordenadas[1];
     }
@@ -147,15 +143,12 @@ public:
     }
 
 private:
-    QVector<qreal> coordenadas;
     qreal x, y;
-    QPen pen;
-    QColor cor = Qt::black;
 };
 
 class Reta : public ObjetoGrafico {
 public:
-    Reta(QList<qreal> coordenadas, QPen pen) : coordenadas(coordenadas), pen(pen) {
+    Reta(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {
         x1 = coordenadas[0];
         y1 = coordenadas[1];
         x2 = coordenadas[2];
@@ -201,7 +194,7 @@ public:
         qreal dy = ponto.y() - closestY;
         qreal distance = sqrt(dx * dx + dy * dy);
 
-        return distance < 5.0; // Use o valor que considerar apropriado como limite
+        return distance < 10.0; // Aumentar a sensibilidade
     }
 
 
@@ -347,7 +340,6 @@ public:
     }
 
 private:
-    QList<qreal> coordenadas;
     qreal x1, y1, x2, y2;
     QPen pen;
     QColor cor = Qt::black;
@@ -355,14 +347,7 @@ private:
 
 class Triangulo : public ObjetoGrafico {
 public:
-    Triangulo(QList<qreal> coordenadas, QPen pen) : coordenadas(coordenadas), pen(pen) {
-        x1 = coordenadas[0];
-        y1 = coordenadas[1];
-        x2 = coordenadas[2];
-        y2 = coordenadas[3];
-        x3 = coordenadas[4];
-        x3 = coordenadas[5];
-    }
+    Triangulo(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
 
     void desenhar(QPainter& painter) override {
         painter.setPen(pen);
@@ -373,139 +358,106 @@ public:
             painter.setBrush(cor);
         }
 
-        QPolygonF triangle;
-        triangle.append(QPoint(x1,y1));
-        triangle.append(QPoint(x2,y2));
-        triangle.append(QPoint(x3,y3));
-        painter.drawPolygon(triangle);
+        if (coordenadas.size() >= 6) {
+            QVector<QPoint> pointList;
+
+            for(int i = 0; i < coordenadas.size(); i += 2) {
+                pointList.append(QPoint(coordenadas[i], coordenadas[i+1]));
+            }
+
+            painter.drawPolygon(pointList.data(), pointList.size());
+        }
     }
 
     bool contemPonto(const QPoint& ponto) const override {
-        //return triangulo.containsPoint(ponto, Qt::OddEvenFill);
-//        qreal x1 = pontos[i];
-//        qreal y1 = pontos[i + 1];
-//        qreal x2 = pontos[(i + 2) % pontos.size()];
-//        qreal y2 = pontos[(i + 3) % pontos.size()];
+        for (int i = 0; i < coordenadas.size(); i += 2) {
+            qreal x1 = coordenadas[i];
+            qreal y1 = coordenadas[i + 1];
+            qreal x2 = coordenadas[(i + 2) % coordenadas.size()];
+            qreal y2 = coordenadas[(i + 3) % coordenadas.size()];
 
-        qreal A = ponto.x() - x1;
-        qreal B = ponto.y() - y1;
-        qreal C = x2 - x1;
-        qreal D = y2 - y1;
+            qreal A = ponto.x() - x1;
+            qreal B = ponto.y() - y1;
+            qreal C = x2 - x1;
+            qreal D = y2 - y1;
 
-        qreal dot = A * C + B * D;
-        qreal len_sq = C * C + D * D;
-        qreal param = dot / len_sq;
+            qreal dot = A * C + B * D;
+            qreal len_sq = C * C + D * D;
+            qreal param = dot / len_sq;
 
-        qreal closestX, closestY;
+            qreal closestX, closestY;
 
-        if (param < 0) {
-            closestX = x1;
-            closestY = y1;
-        } else if (param > 1) {
-            closestX = x2;
-            closestY = y2;
-        } else {
-            closestX = x1 + param * C;
-            closestY = y1 + param * D;
+            if (param < 0) {
+                closestX = x1;
+                closestY = y1;
+            } else if (param > 1) {
+                closestX = x2;
+                closestY = y2;
+            } else {
+                closestX = x1 + param * C;
+                closestY = y1 + param * D;
+            }
+
+            qreal dx = ponto.x() - closestX;
+            qreal dy = ponto.y() - closestY;
+            qreal distance = sqrt(dx * dx + dy * dy);
+
+            if (distance < 10.0) {
+                return true;
+            }
         }
 
-        qreal dx = ponto.x() - closestX;
-        qreal dy = ponto.y() - closestY;
-        qreal distance = sqrt(dx * dx + dy * dy);
-
-        return (distance < 5.0);
+        return false;
     }
 
     void transladar(const QPointF& delta) override {
-        //triangulo.translate(delta);
-        int tamanhoMatriz = 4;
-
-        qreal ponto1[] = {x1, y1, 1, 1};
-        qreal ponto2[] = {x2, y2, 1, 1};
-        qreal ponto3[] = {x3, y3, 1, 1};
-        qreal matrizTranslacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizTranslacao[i][j] = 1;
-                }
-                else {
-                    matrizTranslacao[i][j] = 0;
-                }
-            }
+        for (int i = 0; i < coordenadas.size(); i += 2) {
+            coordenadas[i] += delta.x();
+            coordenadas[i + 1] += delta.y();
         }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizTranslacao[0][tamanhoMatriz - 1] = delta.x();
-        matrizTranslacao[1][tamanhoMatriz - 1] = delta.y();
-        //matrizTranslacao[2][tamanhoMatriz - 1] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-        qreal novoPonto3[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizTranslacao[i][k] * ponto1[k];
-                novoPonto2[i] += matrizTranslacao[i][k] * ponto2[k];
-                novoPonto3[i] += matrizTranslacao[i][k] * ponto3[k];
-            }
-        }
-
-        x1 = novoPonto1[0];
-        y1 = novoPonto1[1];
-        x2 = novoPonto2[0];
-        y2 = novoPonto2[1];
-        x3 = novoPonto3[0];
-        y3 = novoPonto3[1];
     }
 
     void rotacionar(float angulo) override {
-        //QPointF center = triangulo.boundingRect().center();
-        //QTransform transform;
-        //transform.translate(center.x(), center.y());
-        //transform.rotate(angulo);
-        //transform.translate(-center.x(), -center.y());
-        //triangulo = transform.map(triangulo);
-
-//        QPointF center = centro();
-//        QTransform transform;
-//        transform.translate(center.x(), center.y());
-//        transform.rotate(angulo);
-//        transform.translate(-center.x(), -center.y());
-//        QVector<int> newPoints;
-//        for (int i = 0; i < pontos.size(); i += 2) {
-//            qreal x = pontos[i];
-//            qreal y = pontos[i + 1];
-//            QPointF transformedPoint = transform.map(QPointF(x, y));
-//            newPoints.append(transformedPoint.x());
-//            newPoints.append(transformedPoint.y());
-//        }
-//        pontos = newPoints;
+        QPointF center = centro();
+        QTransform transform;
+        transform.translate(center.x(), center.y());
+        transform.rotate(angulo);
+        transform.translate(-center.x(), -center.y());
+        QVector<qreal> newPoints;
+        for (int i = 0; i < coordenadas.size(); i += 2) {
+            qreal x = coordenadas[i];
+            qreal y = coordenadas[i + 1];
+            QPointF transformedPoint = transform.map(QPointF(x, y));
+            newPoints.append(transformedPoint.x());
+            newPoints.append(transformedPoint.y());
+        }
+        coordenadas = newPoints;
     }
 
     void escalar(float fatorX, float fatorY) override {
-//        QPointF center = triangulo.boundingRect().center();
-//        QTransform transform;
-//        transform.translate(center.x(), center.y());
-//        transform.scale(fatorX, fatorY);
-//        transform.translate(-center.x(), -center.y());
-//        triangulo = transform.map(triangulo);
+        //implementar
     }
 
     void setCor(const QColor& cor) override {
         this->cor = cor;
-        //pen.setColor(cor);
     }
 
 private:
-    QList<qreal> coordenadas;
-    qreal x1, y1, x2, y2, x3, y3;
-    QPen pen;
-    QColor cor = Qt::black;
+
+    QPointF centro() const {
+        if (coordenadas.isEmpty() || coordenadas.size() % 2 != 0) {
+            return QPointF(0.0, 0.0);
+        }
+        qreal somaX = 0.0;
+        qreal somaY = 0.0;
+        for (int i = 0; i < coordenadas.size(); i += 2) {
+            qreal x = coordenadas[i];
+            qreal y = coordenadas[i + 1];
+            somaX += x;
+            somaY += y;
+        }
+        return QPointF(somaX / (coordenadas.size() / 2), somaY / (coordenadas.size() / 2));
+    }
 };
 
 class ButtonContainer : public QWidget {
@@ -563,44 +515,16 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent *event) override {
-        if (desenharReta) {
-            if (contadorCliques == 0) {
-                pontoInicial = event->pos();
-                contadorCliques = 1;
-            } else {
-                //Obter coordenadas do clique do mouse
-                pontoFinal = event->pos();
-
-                //Criar QVector com as coordenadas do ponto
-                clickCoordinates.clear();
-                clickCoordinates.push_back(pontoInicial.x());
-                clickCoordinates.push_back(pontoInicial.y());
-                clickCoordinates.push_back(pontoFinal.x());
-                clickCoordinates.push_back(pontoFinal.y());
-
-                //Criar o objeto
-                QPen pen(Qt::black);
-                pen.setWidth(tamanhoCaneta);
-                Reta* reta = new Reta(clickCoordinates, pen);
-
-                //Inserir no displayFile
-                displayFile.push_back(reta);
-                desenharReta = false;
-                contadorCliques = 0;
-                update();
-            }
-        }
+        //Obter coordenadas do clique do mouse
+        QPointF clickPoint = event->pos();
 
         if (desenharPonto) {
-            //Obter coordenadas do clique do mouse
-            QPointF clickPoint = event->pos();
-
             //Criar QVector com as coordenadas do ponto
             clickCoordinates.clear();
             clickCoordinates.push_back(clickPoint.x());
             clickCoordinates.push_back(clickPoint.y());
 
-            //Criar o objeto
+            //Criar o objeto ponto
             Ponto* ponto = new Ponto(clickCoordinates, QPen(Qt::black, tamanhoCaneta));
 
             //Inserir no displayFile
@@ -608,31 +532,47 @@ protected:
 
             desenharPonto = false;
             update();
+            return;
         }
 
-        if (desenharTriangulo) {
-            QPointF clique = event->pos();
+        if (contadorCliques == 0) {
+            clickCoordinates.clear();
+        }
 
-            //Criar QVector com as coordenadas do ponto
-            trianguloAtual.push_back(clique.x());
-            trianguloAtual.push_back(clique.y());
+        //Criar QVector com as coordenadas do ponto
+        clickCoordinates.push_back(clickPoint.x());
+        clickCoordinates.push_back(clickPoint.y());
+        contadorCliques++;
 
-            if (trianguloAtual.size() == 3) {
-                //Criar o objeto
-                Triangulo* tri = new Triangulo(trianguloAtual, QPen(Qt::black, tamanhoCaneta));
+        if (desenharReta && (contadorCliques == 2)) {
+            //Criar o objeto reta
+            QPen pen(Qt::black);
+            pen.setWidth(tamanhoCaneta);
+            Reta *reta = new Reta(clickCoordinates, pen);
 
-                //Inserir no displayFile
-                displayFile.push_back(tri);
+            //Inserir no displayFile
+            displayFile.push_back(reta);
 
-                trianguloAtual.clear();
-                desenharTriangulo = false;
-                update();
-            }
+            desenharReta = false;
+            contadorCliques = 0;
+            update();
+            return;
+        }
+
+        if (desenharTriangulo && (contadorCliques == 3)) {
+            //Criar o objeto triangulo
+            Triangulo *tri = new Triangulo(clickCoordinates, QPen(Qt::black, tamanhoCaneta));
+
+            displayFile.push_back(tri);
+            desenharTriangulo = false;
+            contadorCliques = 0;
+            update();
+            return;
         }
 
         if (selecionando) {
             objetoSelecionado = nullptr;
-            for (ObjetoGrafico* objeto : displayFile) {
+            for (ObjetoGrafico *objeto : displayFile) {
                 if (objeto->contemPonto(event->pos())) {
                     objeto->selecionar(true);
                     objetoSelecionado = objeto;
@@ -748,7 +688,7 @@ private:
     ObjetoGrafico* objetoSelecionado = nullptr;
 
     QVector<qreal> clickCoordinates;
-    QVector<qreal> trianguloAtual;
+    QPolygonF trianguloAtual;
     std::vector<ObjetoGrafico*> displayFile;
 };
 
