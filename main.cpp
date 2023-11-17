@@ -33,6 +33,65 @@ protected:
     bool selecionado = false;
     QPen pen;
     QColor cor = Qt::black;
+
+    // Coordenadas
+    qreal xmin = 0;
+    qreal xmax = 600;
+    qreal ymin = 0;
+    qreal ymax = 600;
+
+    int atribuiCode(int x1, int y1) {
+        int code = 0;
+        if(x1 > xmax) {
+            code = 2; //Right
+        }
+        else if(x1 < xmin) {
+            code = 1; //Left
+        }
+
+        if(y1 > ymax) {
+            code = 4; //Bottom
+        }
+        else if(y1 < ymin) {
+            code = 8; //Top
+        }
+
+        return code;
+    }
+
+    QVector<qreal> cohenSutherlandClip(int code, qreal x, qreal y) {
+        QVector<qreal> newCoords = {x, y};
+        qreal m = (coordenadas[3] - coordenadas[1]) / (coordenadas[2] - coordenadas[0]);
+
+        if(code == 1) {
+            newCoords[1] = m * (xmin - x) + y;
+        }
+        else if(code == 2) {
+            newCoords[1] = m * (xmax - x) + y;
+        }
+
+        if(code == 4) {
+            newCoords[0] = x + ((ymax - y) / m);
+        }
+        else if(code == 8) {
+            newCoords[0] = x + ((ymin - y) / m);
+        }
+
+        return newCoords;
+    }
+
+    QPointF determinarCentro() {
+        qreal centroX = 0, centroY = 0;
+
+        for(int i = 0; i < coordenadas.size(); i += 2) {
+            centroX += coordenadas[i];
+            centroY += coordenadas[i+1];
+        }
+
+        centroX = centroX / (coordenadas.size()/2);
+        centroY = centroY / (coordenadas.size()/2);
+        return QPointF(centroX, centroY);
+    }
 };
 
 class Ponto : public ObjetoGrafico {
@@ -48,7 +107,13 @@ public:
             painter.setBrush(cor);
         }
 
-        painter.drawPoint(coordenadas[0], coordenadas[1]);
+        //Atribuir codigo para o clipping
+        int code = atribuiCode(coordenadas[0], coordenadas[1]);
+
+        //Clipping Cohen Sutherland
+        if(code == 0) {
+            painter.drawPoint(coordenadas[0], coordenadas[1]);
+        }
     }
 
     bool contemPonto(const QPoint& ponto) const override {
@@ -218,7 +283,24 @@ public:
             painter.setBrush(cor);
         }
 
-        painter.drawLine(coordenadas[0], coordenadas[1], coordenadas[2], coordenadas[3]);
+        //Atribuir codigos para clipping
+        int code1 = atribuiCode(coordenadas[0], coordenadas[1]);
+        int code2 = atribuiCode(coordenadas[2], coordenadas[3]);
+
+        //Clipping Cohen Sutherland
+        if((code1 == 0) && (code2 == 0)) {
+            painter.drawLine(coordenadas[0], coordenadas[1], coordenadas[2], coordenadas[3]);
+        }
+        else if((code1 && code2) == 0) {
+            if(code1 != 0) {
+                QVector<qreal> clipped = cohenSutherlandClip(code1, coordenadas[0], coordenadas[1]);
+                painter.drawLine(clipped[0], clipped[1], coordenadas[2], coordenadas[3]);
+            }
+            else if(code2 != 0) {
+                QVector<qreal> clipped = cohenSutherlandClip(code2, coordenadas[2], coordenadas[3]);
+                painter.drawLine(coordenadas[0], coordenadas[1], clipped[0], clipped[1]);
+            }
+        }
     }
 
     bool contemPonto(const QPoint& ponto) const override {
@@ -409,13 +491,6 @@ public:
         this->cor = cor;
         //pen.setColor(cor);
     }
-
-private:
-    QPointF determinarCentro() {
-        qreal centroX = (coordenadas[0] + coordenadas[2])/2;
-        qreal centroY = (coordenadas[1] + coordenadas[3])/2;
-        return QPointF(centroX, centroY);
-    }
 };
 
 class Triangulo : public ObjetoGrafico {
@@ -438,6 +513,7 @@ public:
         }
 
         painter.drawPolygon(pointList.data(), pointList.size());
+        pointList.clear();
     }
 
     bool contemPonto(const QPoint& ponto) const override {
@@ -652,13 +728,6 @@ public:
     void setCor(const QColor& cor) override {
         this->cor = cor;
     }
-
-private:
-    QPointF determinarCentro() {
-        qreal centroX = (coordenadas[0] + coordenadas[2] + coordenadas[4])/3;
-        qreal centroY = (coordenadas[1] + coordenadas[3] + coordenadas[5])/3;
-        return QPointF(centroX, centroY);
-    }
 };
 
 class ButtonContainer : public QWidget {
@@ -683,7 +752,7 @@ public:
         botaoTriangulo = new QPushButton("Desenhar Triângulo", this);
         botaoTriangulo->move(10, 70);
 
-        botaoSelecionar = new QPushButton("Selecionar", this);
+        botaoSelecionar = new QPushButton("Selecionar Objeto", this);
         botaoSelecionar->move(10, 100);
 
         botaoTransladar = new QPushButton("Transladar", this);
@@ -923,36 +992,52 @@ public slots:
     void moverEsquerda() {
         for(ObjetoGrafico *objeto : displayFile) {
             for(int i = 0; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] += 200;
+                objeto->coordenadas[i] += 150;
             }
         }
+
+        xminWindow -= 0.5;
+        xmaxWindow -= 0.5;
+
         update();
     }
 
     void moverDireita() {
         for(ObjetoGrafico *objeto : displayFile) {
             for(int i = 0; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] -= 200;
+                objeto->coordenadas[i] -= 150;
             }
         }
+
+        xminWindow += 0.5;
+        xmaxWindow += 0.5;
+
         update();
     }
 
     void moverCima() {
         for(ObjetoGrafico *objeto : displayFile) {
             for(int i = 1; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] += 200;
+                objeto->coordenadas[i] += 150;
             }
         }
+
+        yminWindow += 0.5;
+        ymaxWindow += 0.5;
+
         update();
     }
 
     void moverBaixo() {
         for(ObjetoGrafico *objeto : displayFile) {
             for(int i = 1; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] -= 200;
+                objeto->coordenadas[i] -= 150;
             }
         }
+
+        yminWindow -= 0.5;
+        ymaxWindow -= 0.5;
+
         update();
     }
 
@@ -1005,12 +1090,6 @@ private:
     // Coordenadas window
     qreal xminWindow = -1, xmaxWindow = 1;
     qreal yminWindow = -1, ymaxWindow = 1;
-
-    // Coordenadas normalizadas
-    qreal minX = -1.0;
-    qreal maxX = 1.0;
-    qreal minY = -1.0;
-    qreal maxY = 1.0;
 
     QPointF pontoInicial, pontoFinal;
     int contadorCliques = 0;
