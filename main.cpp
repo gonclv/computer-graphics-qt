@@ -3,6 +3,7 @@
 #include <QPushButton>
 #include <QMouseEvent>
 #include <QInputDialog>
+#include <QColorDialog>
 #include <QGraphicsView>
 #include <QLayout>
 #include <QListWidget>
@@ -15,11 +16,211 @@ public:
         coordenadas(coordenadas), pen(pen), cor(Qt::black) {}
 
     virtual void desenhar(QPainter& painter) = 0;
-    virtual bool contemPonto(const QPoint& ponto) const = 0;
-    virtual void transladar(const QPointF& delta) = 0;
-    virtual void rotacionar(qreal angulo) = 0;
-    virtual void escalar(qreal fatorX, qreal fatorY) = 0;
-    virtual void setCor(const QColor& cor) = 0;
+
+    bool contemPonto(const QPoint& ponto) const {
+        if(coordenadas.size() <= 4) {
+            //Calcular a distância entre o ponto atual e o ponto do mouse
+            qreal dx = ponto.x() - coordenadas[0];
+            qreal dy = ponto.y() - coordenadas[1];
+            qreal distance = sqrt(dx * dx + dy * dy);
+
+            return distance < 10.0; //Aumentar o valor para aumentar sensibilidade
+        }
+
+        for (int i = 0; i < coordenadas.size(); i += 4) {
+            qreal x1 = coordenadas[i];
+            qreal y1 = coordenadas[i + 1];
+            qreal x2 = coordenadas[(i + 4) % coordenadas.size()];
+            qreal y2 = coordenadas[(i + 5) % coordenadas.size()];
+
+            qreal A = ponto.x() - x1;
+            qreal B = ponto.y() - y1;
+            qreal C = x2 - x1;
+            qreal D = y2 - y1;
+
+            qreal dot = A * C + B * D;
+            qreal len_sq = C * C + D * D;
+            qreal param = dot / len_sq;
+
+            qreal closestX, closestY;
+
+            if (param < 0) {
+                closestX = x1;
+                closestY = y1;
+            } else if (param > 1) {
+                closestX = x2;
+                closestY = y2;
+            } else {
+                closestX = x1 + param * C;
+                closestY = y1 + param * D;
+            }
+
+            qreal dx = ponto.x() - closestX;
+            qreal dy = ponto.y() - closestY;
+            qreal distance = sqrt(dx * dx + dy * dy);
+
+            if (distance < 10.0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void transladar(const QPointF& delta) {
+        int tamanhoMatriz = 4;
+        qreal deltaZ = 0;
+
+        qreal matrizTranslacao[tamanhoMatriz][tamanhoMatriz];
+
+        //Criando matriz identidade
+        for(int i = 0; i < tamanhoMatriz; i++) {
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                if(i == j) {
+                    matrizTranslacao[i][j] = 1;
+                }
+                else {
+                    matrizTranslacao[i][j] = 0;
+                }
+            }
+        }
+
+        //Preenchendo matriz com os dados da translacao
+        matrizTranslacao[0][tamanhoMatriz - 1] = delta.x();
+        matrizTranslacao[1][tamanhoMatriz - 1] = delta.y();
+        matrizTranslacao[2][tamanhoMatriz - 1] = deltaZ;
+
+        //Para cada ponto, realizar a multiplicacao de matrizes
+        for(int i = 0; i < coordenadas.size(); i += 4) {
+            //Salvando as coordenadas antigas
+            qreal coordenadasOriginais[] = {coordenadas[i], coordenadas[i+1], coordenadas[i+2], coordenadas[i+3]};
+
+            //Preparando as novas coordenadas
+            coordenadas[i] = 0;
+            coordenadas[i+1] = 0;
+            coordenadas[i+2] = 0;
+            coordenadas[i+3] = 0;
+
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                for(int k = 0; k < tamanhoMatriz; k++) {
+                    coordenadas[i+j] += matrizTranslacao[j][k] * coordenadasOriginais[k];
+                }
+            }
+        }
+    }
+
+    void rotacionar(qreal angulo) {
+        qreal radianos = qDegreesToRadians(angulo);
+        int tamanhoMatriz = 4;
+
+        //Primeiro precisamos transladar o ponto até o centro
+        QPointF centroTriangulo = determinarCentro();
+        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
+
+        qreal matrizRotacao[tamanhoMatriz][tamanhoMatriz];
+
+        //Criando matriz identidade
+        for(int i = 0; i < tamanhoMatriz; i++) {
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                if(i == j) {
+                    matrizRotacao[i][j] = 1;
+                }
+                else {
+                    matrizRotacao[i][j] = 0;
+                }
+            }
+        }
+
+        //Preenchendo matriz com os dados da rotacao
+        /*
+        //Rotacao no eixo x
+        matrizRotacao[1][1] = qCos(radianos);
+        matrizRotacao[2][1] = qSin(radianos);
+        matrizRotacao[2][2] = qCos(radianos);
+
+        //Rotacao no eixo y
+        matrizRotacao[0][0] = qCos(radianos);
+        matrizRotacao[0][2] = qSin(radianos);
+        matrizRotacao[2][0] = -(qSin(radianos));
+        matrizRotacao[2][2] = qCos(radianos);
+        */
+
+        //Rotacao no eixo z
+        matrizRotacao[0][0] = qCos(radianos);
+        matrizRotacao[0][1] = -(qSin(radianos));
+        matrizRotacao[1][0] = qSin(radianos);
+        matrizRotacao[1][1] = qCos(radianos);
+
+        //Para cada ponto, realizar a multiplicacao de matrizes
+        for(int i = 0; i < coordenadas.size(); i += 4) {
+            //Salvando as coordenadas antigas
+            qreal coordenadasOriginais[] = {coordenadas[i], coordenadas[i+1], coordenadas[i+2], coordenadas[i+3]};
+
+            //Preparando as novas coordenadas
+            coordenadas[i] = 0;
+            coordenadas[i+1] = 0;
+            coordenadas[i+2] = 0;
+            coordenadas[i+3] = 0;
+
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                for(int k = 0; k < tamanhoMatriz; k++) {
+                    coordenadas[i+j] += matrizRotacao[j][k] * coordenadasOriginais[k];
+                }
+            }
+        }
+
+        //Voltando para a posição inicial
+        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
+    }
+
+    void escalar(qreal fatorX, qreal fatorY) {
+        int tamanhoMatriz = 4;
+        qreal fatorZ = 1;
+
+        //Primeiro precisamos transladar o ponto ate o centro
+        QPointF centroTriangulo = determinarCentro();
+        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
+
+        qreal matrizEscala[tamanhoMatriz][tamanhoMatriz];
+
+        //Criando matriz identidade
+        for(int i = 0; i < tamanhoMatriz; i++) {
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                if(i == j) {
+                    matrizEscala[i][j] = 1;
+                }
+                else {
+                    matrizEscala[i][j] = 0;
+                }
+            }
+        }
+
+        //Preenchendo matriz com os dados da translacao
+        matrizEscala[0][0] = fatorX;
+        matrizEscala[1][1] = fatorY;
+        matrizEscala[2][2] = fatorZ;
+
+        //Para cada ponto, realizar a multiplicacao de matrizes
+        for(int i = 0; i < coordenadas.size(); i += 4) {
+            //Salvando as coordenadas antigas
+            qreal coordenadasOriginais[] = {coordenadas[i], coordenadas[i+1], coordenadas[i+2], coordenadas[i+3]};
+
+            //Preparando as novas coordenadas
+            coordenadas[i] = 0;
+            coordenadas[i+1] = 0;
+            coordenadas[i+2] = 0;
+            coordenadas[i+3] = 0;
+
+            for(int j = 0; j < tamanhoMatriz; j++) {
+                for(int k = 0; k < tamanhoMatriz; k++) {
+                    coordenadas[i+j] += matrizEscala[j][k] * coordenadasOriginais[k];
+                }
+            }
+        }
+
+        //Voltando para a posição inicial
+        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
+    }
 
     bool estaSelecionado() const {
         return selecionado;
@@ -27,6 +228,14 @@ public:
 
     void selecionar(bool selecionar) {
         selecionado = selecionar;
+    }
+
+    QColor getCor() {
+        return this->cor;
+    }
+
+    void setCor(const QColor& cor) {
+        this->cor = cor;
     }
 
 protected:
@@ -83,13 +292,13 @@ protected:
     QPointF determinarCentro() {
         qreal centroX = 0, centroY = 0;
 
-        for(int i = 0; i < coordenadas.size(); i += 2) {
+        for(int i = 0; i < coordenadas.size(); i += 4) {
             centroX += coordenadas[i];
             centroY += coordenadas[i+1];
         }
 
-        centroX = centroX / (coordenadas.size()/2);
-        centroY = centroY / (coordenadas.size()/2);
+        centroX = centroX / (coordenadas.size()/4);
+        centroY = centroY / (coordenadas.size()/4);
         return QPointF(centroX, centroY);
     }
 };
@@ -99,12 +308,12 @@ public:
     Ponto(QVector<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
 
     void desenhar(QPainter& painter) override {
-        painter.setPen(pen);
+        painter.setBrush(cor); //Cor de preenchimento
+
         if (estaSelecionado()) {
-            painter.setBrush(Qt::red);
-            painter.setPen(QPen(Qt::red, 2)); // Contorno vermelho quando selecionado
+            painter.setPen(QPen(Qt::red, 2)); //Borda vermelha
         } else {
-            painter.setBrush(cor);
+            painter.setPen(QPen(cor, 2)); //Mudar para Qt::black para desenhar borda preta
         }
 
         //Atribuir codigo para o clipping
@@ -112,161 +321,9 @@ public:
 
         //Clipping Cohen Sutherland
         if(code == 0) {
+            painter.setRenderHint(QPainter::Antialiasing);
             painter.drawPoint(coordenadas[0], coordenadas[1]);
         }
-    }
-
-    bool contemPonto(const QPoint& ponto) const override {
-        //Calcular a distância entre o ponto atual e o ponto do mouse
-        qreal dx = ponto.x() - coordenadas[0];
-        qreal dy = ponto.y() - coordenadas[1];
-        qreal distance = sqrt(dx * dx + dy * dy);
-
-        return distance < 10.0; //Aumentar o valor para aumentar sensibilidade
-    }
-
-    void transladar(const QPointF& delta) override {
-        int tamanhoMatriz = 4;
-
-        qreal coordenadasPonto[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal matrizTranslacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizTranslacao[i][j] = 1;
-                }
-                else {
-                    matrizTranslacao[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizTranslacao[0][tamanhoMatriz - 1] = delta.x();
-        matrizTranslacao[1][tamanhoMatriz - 1] = delta.y();
-        //matrizTranslacao[2][tamanhoMatriz - 1] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novasCoordenadas[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novasCoordenadas[i] += matrizTranslacao[i][k] * coordenadasPonto[k];
-            }
-        }
-
-        coordenadas[0] = novasCoordenadas[0];
-        coordenadas[1] = novasCoordenadas[1];
-    }
-
-    void rotacionar(qreal angulo) override {
-        qreal radianos = qDegreesToRadians(angulo);
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto até o centro
-        qreal oldX = coordenadas[0];
-        qreal oldY = coordenadas[1];
-        transladar(QPointF(-coordenadas[0], -coordenadas[1]));
-
-        qreal coordenadasPonto[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal matrizRotacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizRotacao[i][j] = 1;
-                }
-                else {
-                    matrizRotacao[i][j] = 0;
-                }
-            }
-        }
-
-        /*
-        //Rotacao no eixo x
-        matrizRotacao[1][1] = qCos(radianos);
-        matrizRotacao[2][1] = qSin(radianos);
-        matrizRotacao[2][2] = qCos(radianos);
-
-        //Rotacao no eixo y
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][2] = qSin(radianos);
-        matrizRotacao[2][0] = -(qSin(radianos));
-        matrizRotacao[2][2] = qCos(radianos);
-        */
-
-        //Rotacao no eixo z
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][1] = -(qSin(radianos));
-        matrizRotacao[1][0] = qSin(radianos);
-        matrizRotacao[1][1] = qCos(radianos);
-
-        //Novas coordenadas
-        qreal novasCoordenadas[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novasCoordenadas[i] += matrizRotacao[i][k] * coordenadasPonto[k];
-            }
-        }
-
-        coordenadas[0] = novasCoordenadas[0];
-        coordenadas[1] = novasCoordenadas[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(oldX, oldY));
-    }
-
-    void escalar(qreal fatorX, qreal fatorY) override {
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto até o centro
-        qreal oldX = coordenadas[0];
-        qreal oldY = coordenadas[1];
-        transladar(QPointF(-coordenadas[0], -coordenadas[1]));
-
-        qreal coordenadasPonto[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal matrizEscala[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizEscala[i][j] = 1;
-                }
-                else {
-                    matrizEscala[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizEscala[0][0] = fatorX;
-        matrizEscala[1][1] = fatorY;
-        //matrizEscala[2][2] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novasCoordenadas[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novasCoordenadas[i] += matrizEscala[i][k] * coordenadasPonto[k];
-            }
-        }
-
-        coordenadas[0] = novasCoordenadas[0];
-        coordenadas[1] = novasCoordenadas[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(oldX, oldY));
-    }
-
-    void setCor(const QColor& cor) override {
-        this->cor = cor;
-        pen.setColor(cor);
     }
 };
 
@@ -275,12 +332,13 @@ public:
     Reta(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
 
     void desenhar(QPainter& painter) override {
-        painter.setPen(pen);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setBrush(cor); //Cor de preenchimento
+
         if (estaSelecionado()) {
-            painter.setBrush(Qt::red);
-            painter.setPen(QPen(Qt::red, 2)); // Contorno vermelho quando selecionado
+            painter.setPen(QPen(Qt::red, 2)); //Borda vermelha
         } else {
-            painter.setBrush(cor);
+            painter.setPen(QPen(cor, 2)); //Mudar para Qt::black para desenhar borda preta
         }
 
         //Atribuir codigos para clipping
@@ -302,195 +360,6 @@ public:
             }
         }
     }
-
-    bool contemPonto(const QPoint& ponto) const override {
-        qreal A = ponto.x() - coordenadas[0];
-        qreal B = ponto.y() - coordenadas[1];
-        qreal C = coordenadas[2] - coordenadas[0];
-        qreal D = coordenadas[3] - coordenadas[1];
-
-        qreal dot = A * C + B * D;
-        qreal len_sq = C * C + D * D;
-        qreal param = dot / len_sq;
-
-        qreal closestX, closestY;
-
-        if (param < 0) {
-            closestX = coordenadas[0];
-            closestY = coordenadas[1];
-        } else if (param > 1) {
-            closestX = coordenadas[2];
-            closestY = coordenadas[3];
-        } else {
-            closestX = coordenadas[0] + param * C;
-            closestY = coordenadas[1] + param * D;
-        }
-
-        qreal dx = ponto.x() - closestX;
-        qreal dy = ponto.y() - closestY;
-        qreal distance = sqrt(dx * dx + dy * dy);
-
-        return distance < 10.0; // Aumentar a sensibilidade
-    }
-
-    void transladar(const QPointF& delta) override {
-        int tamanhoMatriz = 4;
-
-        qreal ponto1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal ponto2[] = {coordenadas[2], coordenadas[3], 1, 1};
-        qreal matrizTranslacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizTranslacao[i][j] = 1;
-                }
-                else {
-                    matrizTranslacao[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizTranslacao[0][tamanhoMatriz - 1] = delta.x();
-        matrizTranslacao[1][tamanhoMatriz - 1] = delta.y();
-        //matrizTranslacao[2][tamanhoMatriz - 1] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizTranslacao[i][k] * ponto1[k];
-                novoPonto2[i] += matrizTranslacao[i][k] * ponto2[k];
-            }
-        }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-    }
-
-    void rotacionar(qreal angulo) override {
-        qreal radianos = qDegreesToRadians(angulo);
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto até o centro
-        QPointF centroReta = determinarCentro();
-        transladar(QPointF(-(centroReta.x()), -(centroReta.y())));
-
-        qreal pontoOriginal1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal pontoOriginal2[] = {coordenadas[2], coordenadas[3], 1, 1};
-
-        qreal matrizRotacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizRotacao[i][j] = 1;
-                }
-                else {
-                    matrizRotacao[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da rotacao
-        /*
-        //Rotacao no eixo x
-        matrizRotacao[1][1] = qCos(radianos);
-        matrizRotacao[2][1] = qSin(radianos);
-        matrizRotacao[2][2] = qCos(radianos);
-
-        //Rotacao no eixo y
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][2] = qSin(radianos);
-        matrizRotacao[2][0] = -(qSin(radianos));
-        matrizRotacao[2][2] = qCos(radianos);
-        */
-
-        //Rotacao no eixo z
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][1] = -(qSin(radianos));
-        matrizRotacao[1][0] = qSin(radianos);
-        matrizRotacao[1][1] = qCos(radianos);
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizRotacao[i][k] * pontoOriginal1[k];
-                novoPonto2[i] += matrizRotacao[i][k] * pontoOriginal2[k];
-            }
-        }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(centroReta.x(), centroReta.y()));
-    }
-
-    void escalar(qreal fatorX, qreal fatorY) override {
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto até o centro
-        QPointF centroReta = determinarCentro();
-        transladar(QPointF(-(centroReta.x()), -(centroReta.y())));
-
-        qreal pontoOriginal1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal pontoOriginal2[] = {coordenadas[2], coordenadas[3], 1, 1};
-        qreal matrizEscala[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizEscala[i][j] = 1;
-                }
-                else {
-                    matrizEscala[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizEscala[0][0] = fatorX;
-        matrizEscala[1][1] = fatorY;
-        //matrizEscala[2][2] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizEscala[i][k] * pontoOriginal1[k];
-                novoPonto2[i] += matrizEscala[i][k] * pontoOriginal2[k];
-            }
-        }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(centroReta.x(), centroReta.y()));
-    }
-
-    void setCor(const QColor& cor) override {
-        this->cor = cor;
-        //pen.setColor(cor);
-    }
 };
 
 class Triangulo : public ObjetoGrafico {
@@ -498,245 +367,67 @@ public:
     Triangulo(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
 
     void desenhar(QPainter& painter) override {
-        painter.setPen(pen);
+        painter.setBrush(cor); //Cor de preenchimento
+
         if (estaSelecionado()) {
-            painter.setBrush(Qt::red);
-            painter.setPen(QPen(Qt::red, 2));
+            painter.setPen(QPen(Qt::red, 2)); //Borda vermelha
         } else {
-            painter.setBrush(cor);
+            painter.setPen(QPen(cor, 2)); //Mudar para Qt::black para desenhar borda preta
         }
 
         QVector<QPointF> pointList;
 
-        for(int i = 0; i < coordenadas.size(); i += 2) {
+        for(int i = 0; i < coordenadas.size(); i += 4) {
             pointList.append(QPointF(coordenadas[i], coordenadas[i+1]));
         }
 
+        painter.setRenderHint(QPainter::Antialiasing);
         painter.drawPolygon(pointList.data(), pointList.size());
         pointList.clear();
     }
+};
 
-    bool contemPonto(const QPoint& ponto) const override {
-        for (int i = 0; i < coordenadas.size(); i += 2) {
-            qreal x1 = coordenadas[i];
-            qreal y1 = coordenadas[i + 1];
-            qreal x2 = coordenadas[(i + 2) % coordenadas.size()];
-            qreal y2 = coordenadas[(i + 3) % coordenadas.size()];
+class Poligono : public ObjetoGrafico {
+public:
+    Poligono(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
 
-            qreal A = ponto.x() - x1;
-            qreal B = ponto.y() - y1;
-            qreal C = x2 - x1;
-            qreal D = y2 - y1;
+    void desenhar(QPainter& painter) override {
+        painter.setBrush(cor); //Cor de preenchimento
 
-            qreal dot = A * C + B * D;
-            qreal len_sq = C * C + D * D;
-            qreal param = dot / len_sq;
-
-            qreal closestX, closestY;
-
-            if (param < 0) {
-                closestX = x1;
-                closestY = y1;
-            } else if (param > 1) {
-                closestX = x2;
-                closestY = y2;
-            } else {
-                closestX = x1 + param * C;
-                closestY = y1 + param * D;
-            }
-
-            qreal dx = ponto.x() - closestX;
-            qreal dy = ponto.y() - closestY;
-            qreal distance = sqrt(dx * dx + dy * dy);
-
-            if (distance < 10.0) {
-                return true;
-            }
+        if (estaSelecionado()) {
+            painter.setPen(QPen(Qt::red, 2)); //Borda vermelha
+        } else {
+            painter.setPen(QPen(cor, 2)); //Mudar para Qt::black para desenhar borda preta
         }
 
-        return false;
-    }
-
-    void transladar(const QPointF& delta) override {
-        int tamanhoMatriz = 4;
-
-        qreal ponto1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal ponto2[] = {coordenadas[2], coordenadas[3], 1, 1};
-        qreal ponto3[] = {coordenadas[4], coordenadas[5], 1, 1};
-        qreal matrizTranslacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizTranslacao[i][j] = 1;
-                }
-                else {
-                    matrizTranslacao[i][j] = 0;
-                }
-            }
+        if(coordenadas.size() <= 4) {
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.drawPoint(coordenadas[0], coordenadas[1]);
         }
+        else {
+            QVector<QPointF> pointList;
 
-        //Preenchendo matriz com os dados da translacao
-        matrizTranslacao[0][tamanhoMatriz - 1] = delta.x();
-        matrizTranslacao[1][tamanhoMatriz - 1] = delta.y();
-        //matrizTranslacao[2][tamanhoMatriz - 1] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-        qreal novoPonto3[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizTranslacao[i][k] * ponto1[k];
-                novoPonto2[i] += matrizTranslacao[i][k] * ponto2[k];
-                novoPonto3[i] += matrizTranslacao[i][k] * ponto3[k];
+            for(int i = 0; i < coordenadas.size(); i += 4) {
+                pointList.append(QPointF(coordenadas[i], coordenadas[i+1]));
             }
+
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.drawPolygon(pointList.data(), pointList.size());
+            pointList.clear();
         }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-        coordenadas[4] = novoPonto3[0];
-        coordenadas[5] = novoPonto3[1];
-    }
-
-    void rotacionar(qreal angulo) override {
-        qreal radianos = qDegreesToRadians(angulo);
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto até o centro
-        QPointF centroTriangulo = determinarCentro();
-        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
-
-        qreal pontoOriginal1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal pontoOriginal2[] = {coordenadas[2], coordenadas[3], 1, 1};
-        qreal pontoOriginal3[] = {coordenadas[4], coordenadas[5], 1, 1};
-        qreal matrizRotacao[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizRotacao[i][j] = 1;
-                }
-                else {
-                    matrizRotacao[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da rotacao
-        /*
-        //Rotacao no eixo x
-        matrizRotacao[1][1] = qCos(radianos);
-        matrizRotacao[2][1] = qSin(radianos);
-        matrizRotacao[2][2] = qCos(radianos);
-
-        //Rotacao no eixo y
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][2] = qSin(radianos);
-        matrizRotacao[2][0] = -(qSin(radianos));
-        matrizRotacao[2][2] = qCos(radianos);
-        */
-
-        //Rotacao no eixo z
-        matrizRotacao[0][0] = qCos(radianos);
-        matrizRotacao[0][1] = -(qSin(radianos));
-        matrizRotacao[1][0] = qSin(radianos);
-        matrizRotacao[1][1] = qCos(radianos);
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-        qreal novoPonto3[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizRotacao[i][k] * pontoOriginal1[k];
-                novoPonto2[i] += matrizRotacao[i][k] * pontoOriginal2[k];
-                novoPonto3[i] += matrizRotacao[i][k] * pontoOriginal3[k];
-            }
-        }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-        coordenadas[4] = novoPonto3[0];
-        coordenadas[5] = novoPonto3[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
-    }
-
-    void escalar(qreal fatorX, qreal fatorY) override {
-        int tamanhoMatriz = 4;
-
-        //Primeiro precisamos transladar o ponto ate o centro
-        QPointF centroTriangulo = determinarCentro();
-        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
-
-        qreal pontoOriginal1[] = {coordenadas[0], coordenadas[1], 1, 1};
-        qreal pontoOriginal2[] = {coordenadas[2], coordenadas[3], 1, 1};
-        qreal pontoOriginal3[] = {coordenadas[4], coordenadas[5], 1, 1};
-        qreal matrizEscala[tamanhoMatriz][tamanhoMatriz];
-
-        //Criando matriz identidade
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int j = 0; j < tamanhoMatriz; j++) {
-                if(i == j) {
-                    matrizEscala[i][j] = 1;
-                }
-                else {
-                    matrizEscala[i][j] = 0;
-                }
-            }
-        }
-
-        //Preenchendo matriz com os dados da translacao
-        matrizEscala[0][0] = fatorX;
-        matrizEscala[1][1] = fatorY;
-        //matrizEscala[2][2] --> para coordenada z
-
-        //Novas coordenadas
-        qreal novoPonto1[] = {0, 0, 0, 0};
-        qreal novoPonto2[] = {0, 0, 0, 0};
-        qreal novoPonto3[] = {0, 0, 0, 0};
-
-        for(int i = 0; i < tamanhoMatriz; i++) {
-            for(int k = 0; k < tamanhoMatriz; k++) {
-                novoPonto1[i] += matrizEscala[i][k] * pontoOriginal1[k];
-                novoPonto2[i] += matrizEscala[i][k] * pontoOriginal2[k];
-                novoPonto3[i] += matrizEscala[i][k] * pontoOriginal3[k];
-            }
-        }
-
-        coordenadas[0] = novoPonto1[0];
-        coordenadas[1] = novoPonto1[1];
-        coordenadas[2] = novoPonto2[0];
-        coordenadas[3] = novoPonto2[1];
-        coordenadas[4] = novoPonto3[0];
-        coordenadas[5] = novoPonto3[1];
-
-        //Voltando para a posição inicial
-        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
-    }
-
-    void setCor(const QColor& cor) override {
-        this->cor = cor;
     }
 };
 
 class ButtonContainer : public QWidget {
 public:
     //Botoes relacionados a criacao de objetos
-    QPushButton *botaoReta, *botaoPonto, *botaoTriangulo, *botaoDigitar;
+    QPushButton *botaoReta, *botaoPonto, *botaoTriangulo, *botaoPoligono, *botaoDigitar;
 
     //Botoes relacionados as transformacoes
     QPushButton *botaoSelecionar, *botaoTransladar, *botaoRotacionar, *botaoEscalar;
+
+    //Botao para mudanca de cor
+    QPushButton *botaoCor;
 
     //Botoes relacionados a movimentacao de camera
     QPushButton *botaoMoverEsq, *botaoMoverDir, *botaoMoverCima, *botaoMoverBaixo, *botaoZoomIn, *botaoZoomOut;
@@ -752,8 +443,14 @@ public:
         botaoTriangulo = new QPushButton("Desenhar Triângulo", this);
         botaoTriangulo->move(10, 70);
 
+        botaoPoligono = new QPushButton("Desenhar Polígono", this);
+        botaoPoligono->move(10, 430);
+
         botaoSelecionar = new QPushButton("Selecionar Objeto", this);
         botaoSelecionar->move(10, 100);
+
+        botaoCor = new QPushButton("Mudar Cor", this);
+        botaoCor->move(10, 460);
 
         botaoTransladar = new QPushButton("Transladar", this);
         botaoTransladar->move(10, 130);
@@ -793,7 +490,9 @@ public:
         connect(botoes.botaoReta, &QPushButton::clicked, this, &Canvas::reta);
         connect(botoes.botaoPonto, &QPushButton::clicked, this, &Canvas::ponto);
         connect(botoes.botaoTriangulo, &QPushButton::clicked, this, &Canvas::triangulo);
+        connect(botoes.botaoPoligono, &QPushButton::clicked, this, &Canvas::poligono);
         connect(botoes.botaoSelecionar, &QPushButton::clicked, this, &Canvas::selecionar);
+        connect(botoes.botaoCor, &QPushButton::clicked, this, &Canvas::trocarCor);
         connect(botoes.botaoTransladar, &QPushButton::clicked, this, &Canvas::transladar);
         connect(botoes.botaoRotacionar, &QPushButton::clicked, this, &Canvas::rotacionar);
         connect(botoes.botaoEscalar, &QPushButton::clicked, this, &Canvas::escalar);
@@ -824,6 +523,8 @@ protected:
             clickCoordinates.clear();
             clickCoordinates.push_back(clickPoint.x());
             clickCoordinates.push_back(clickPoint.y());
+            clickCoordinates.push_back(1.0); //coordenada Z
+            clickCoordinates.push_back(1.0); //coordenada W
 
             //Criar o objeto ponto
             Ponto* ponto = new Ponto(clickCoordinates, QPen(Qt::black, tamanhoCaneta));
@@ -843,6 +544,8 @@ protected:
         //Criar QVector com as coordenadas do ponto
         clickCoordinates.push_back(clickPoint.x());
         clickCoordinates.push_back(clickPoint.y());
+        clickCoordinates.push_back(1.0); //coordenada Z
+        clickCoordinates.push_back(1.0); //coordenada W
         contadorCliques++;
 
         if (desenharReta && (contadorCliques == 2)) {
@@ -871,6 +574,17 @@ protected:
             return;
         }
 
+        if(desenharPoligono && (contadorCliques >= numPontos)) {
+            //Criar o objeto triangulo
+            Poligono *polygon = new Poligono(clickCoordinates, QPen(Qt::black, tamanhoCaneta));
+
+            displayFile.push_back(polygon);
+            desenharPoligono = false;
+            contadorCliques = 0;
+            update();
+            return;
+        }
+
         if (selecionando) {
             objetoSelecionado = nullptr;
             for (ObjetoGrafico *objeto : displayFile) {
@@ -887,16 +601,35 @@ protected:
 
 public slots:
     void reta() {
-        desenharReta = !desenharReta;
+        numPontos = 2;
+        desenharPoligono = !desenharPoligono;
         contadorCliques = 0;
     }
     void ponto() {
         desenharPonto = !desenharPonto;
+        contadorCliques = 0;
     }
     void triangulo() {
         desenharTriangulo = !desenharTriangulo;
-        if (!desenharTriangulo) {
-            trianguloAtual.clear();
+        contadorCliques = 0;
+    }
+    void poligono() {
+        bool ok;
+        numPontos = QInputDialog::getInt(nullptr, "Desenhar Polígono", "Digite o número de pontos do polígono:", 1, 0, 100, 1, &ok);
+
+        if (ok) {
+            desenharPoligono = !desenharPoligono;
+            contadorCliques = 0;
+        }
+    }
+    void trocarCor() {
+        if (selecionando && objetoSelecionado) {
+            QColor newColor = QColorDialog::getColor(objetoSelecionado->getCor(), this, "Selecione uma Cor", QColorDialog::ShowAlphaChannel);
+
+            if (newColor.isValid()) {
+                objetoSelecionado->setCor(newColor);
+                update();
+            }
         }
     }
 
@@ -1092,17 +825,17 @@ private:
     qreal yminWindow = -1, ymaxWindow = 1;
 
     QPointF pontoInicial, pontoFinal;
-    int contadorCliques = 0;
+    int contadorCliques = 0, numPontos;
 
     bool desenharReta = false;
     bool desenharPonto = false;
     bool desenharTriangulo = false;
+    bool desenharPoligono = false;
 
     bool selecionando = false;
     ObjetoGrafico* objetoSelecionado = nullptr;
 
     QVector<qreal> clickCoordinates;
-    QPolygonF trianguloAtual;
     std::vector<ObjetoGrafico*> displayFile;
 };
 
