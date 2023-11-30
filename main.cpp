@@ -12,10 +12,23 @@ class ObjetoGrafico {
 public:
     QList<qreal> coordenadas;
 
-    ObjetoGrafico(QVector<qreal> coordenadas, QPen pen) :
-        coordenadas(coordenadas), pen(pen), cor(Qt::black) {}
+    ObjetoGrafico(QVector<qreal> coordenadas, QColor cor) :
+        coordenadas(coordenadas), cor(cor), corCaneta(cor) {}
 
     virtual void desenhar(QPainter& painter) = 0;
+
+    QPointF determinarCentro() {
+        qreal centroX = 0, centroY = 0;
+
+        for(int i = 0; i < coordenadas.size(); i += 4) {
+            centroX += coordenadas[i];
+            centroY += coordenadas[i+1];
+        }
+
+        centroX = centroX / (coordenadas.size()/4);
+        centroY = centroY / (coordenadas.size()/4);
+        return QPointF(centroX, centroY);
+    }
 
     bool contemPonto(const QPointF& ponto) const {
         if(coordenadas.size() <= 4) {
@@ -109,13 +122,12 @@ public:
         }
     }
 
-    void rotacionar(qreal angulo) {
+    void rotacionar(qreal angulo, QPointF centro) {
         qreal radianos = qDegreesToRadians(angulo);
         int tamanhoMatriz = 4;
 
         //Primeiro precisamos transladar o ponto até o centro
-        QPointF centroTriangulo = determinarCentro();
-        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
+        transladar(QPointF(-(centro.x()), -(centro.y())));
 
         qreal matrizRotacao[tamanhoMatriz][tamanhoMatriz];
 
@@ -170,16 +182,16 @@ public:
         }
 
         //Voltando para a posição inicial
-        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
+        transladar(QPointF(centro.x(), centro.y()));
     }
 
-    void escalar(qreal fatorX, qreal fatorY) {
+    void escalar(qreal fatorX, qreal fatorY, QPointF centro) {
         int tamanhoMatriz = 4;
         qreal fatorZ = 1;
 
         //Primeiro precisamos transladar o ponto ate o centro
-        QPointF centroTriangulo = determinarCentro();
-        transladar(QPointF(-(centroTriangulo.x()), -(centroTriangulo.y())));
+        //QPointF centro = determinarCentro();
+        transladar(QPointF(-(centro.x()), -(centro.y())));
 
         qreal matrizEscala[tamanhoMatriz][tamanhoMatriz];
 
@@ -219,7 +231,7 @@ public:
         }
 
         //Voltando para a posição inicial
-        transladar(QPointF(centroTriangulo.x(), centroTriangulo.y()));
+        transladar(QPointF(centro.x(), centro.y()));
         contEscala++;
     }
 
@@ -239,6 +251,10 @@ public:
         this->cor = cor;
     }
 
+    void setCorCaneta(const QColor& newColor) {
+        this->corCaneta = newColor;
+    }
+
     int getContEscala() {
         return this->contEscala;
     }
@@ -249,9 +265,9 @@ public:
 
 protected:
     bool selecionado = false;
-    QPen pen;
-    QColor cor = Qt::black;
+    QColor cor, corCaneta;
     int contEscala = 0;
+    int tamanhoCaneta = 2;
 
     // Coordenadas
     qreal xmin = 0;
@@ -298,24 +314,11 @@ protected:
 
         return newCoords;
     }
-
-    QPointF determinarCentro() {
-        qreal centroX = 0, centroY = 0;
-
-        for(int i = 0; i < coordenadas.size(); i += 4) {
-            centroX += coordenadas[i];
-            centroY += coordenadas[i+1];
-        }
-
-        centroX = centroX / (coordenadas.size()/4);
-        centroY = centroY / (coordenadas.size()/4);
-        return QPointF(centroX, centroY);
-    }
 };
 
 class Ponto : public ObjetoGrafico {
 public:
-    Ponto(QVector<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
+    Ponto(QVector<qreal> coordenadas, QColor cor) : ObjetoGrafico(coordenadas, cor) {}
 
     void desenhar(QPainter& painter) override {
         painter.setBrush(cor); //Cor de preenchimento
@@ -331,7 +334,6 @@ public:
 
         //Clipping Cohen Sutherland
         if(code == 0) {
-            painter.setRenderHint(QPainter::Antialiasing);
             painter.drawPoint(coordenadas[0], coordenadas[1]);
         }
     }
@@ -339,10 +341,9 @@ public:
 
 class Reta : public ObjetoGrafico {
 public:
-    Reta(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
+    Reta(QList<qreal> coordenadas, QColor cor) : ObjetoGrafico(coordenadas, cor) {}
 
     void desenhar(QPainter& painter) override {
-        painter.setRenderHint(QPainter::Antialiasing);
         painter.setBrush(cor); //Cor de preenchimento
 
         if (estaSelecionado()) {
@@ -374,7 +375,7 @@ public:
 
 class Triangulo : public ObjetoGrafico {
 public:
-    Triangulo(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
+    Triangulo(QList<qreal> coordenadas, QColor cor) : ObjetoGrafico(coordenadas, cor) {}
 
     void desenhar(QPainter& painter) override {
         painter.setBrush(cor); //Cor de preenchimento
@@ -391,7 +392,6 @@ public:
             pointList.append(QPointF(coordenadas[i], coordenadas[i+1]));
         }
 
-        painter.setRenderHint(QPainter::Antialiasing);
         painter.drawPolygon(pointList.data(), pointList.size());
         pointList.clear();
     }
@@ -399,19 +399,19 @@ public:
 
 class Poligono : public ObjetoGrafico {
 public:
-    Poligono(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen) {}
+    Poligono(QList<qreal> coordenadas, QColor cor) : ObjetoGrafico(coordenadas, cor) {}
+    Poligono(QList<qreal> coordenadas, QPen pen) : ObjetoGrafico(coordenadas, pen.color()) {}
 
     void desenhar(QPainter& painter) override {
-        painter.setBrush(pen.color()); //Cor de preenchimento
+        painter.setBrush(cor); //Cor de preenchimento
 
         if (estaSelecionado()) {
             painter.setPen(QPen(Qt::red, 2)); //Borda vermelha
         } else {
-            painter.setPen(QPen(cor, 2)); //Mudar para Qt::black para desenhar borda preta
+            painter.setPen(QPen(corCaneta, 2)); //Mudar para Qt::black para desenhar borda preta
         }
 
         if(coordenadas.size() <= 4) {
-            painter.setRenderHint(QPainter::Antialiasing);
             painter.drawPoint(coordenadas[0], coordenadas[1]);
         }
         else {
@@ -421,109 +421,364 @@ public:
                 pointList.append(QPointF(coordenadas[i], coordenadas[i+1]));
             }
 
-            painter.setRenderHint(QPainter::Antialiasing);
             painter.drawPolygon(pointList.data(), pointList.size());
             pointList.clear();
         }
     }
 };
 
-class ButtonContainer : public QWidget {
+class Cenario {
 public:
-    //Botoes relacionados a criacao de objetos
-    QPushButton *botaoReta, *botaoPonto, *botaoTriangulo, *botaoPoligono, *botaoDigitar;
+    Cenario(qreal xmin, qreal xmax, qreal ymin, qreal ymax) {
+        //Ceu
+        poligonos.push_back(Poligono({xmin, ymin, 1, 1,
+                                      xmax, ymin, 1, 1,
+                                      xmax, ymax/2, 1, 1,
+                                      xmin, ymax/2, 1, 1},
+                                     Qt::blue));
 
-    //Botoes relacionados as transformacoes
-    QPushButton *botaoSelecionar, *botaoTransladar, *botaoRotacionar, *botaoEscalar;
+        //Grama
+        poligonos.push_back(Poligono({xmin, ymax/2, 1, 1,
+                                      xmax, ymax/2, 1, 1,
+                                      xmax, ymax, 1, 1,
+                                      xmin, ymax, 1, 1},
+                                     Qt::green));
 
-    //Botao para mudanca de cor
-    QPushButton *botaoCor;
+        //Estrelas
+        int numberOfStars = rand() % 90 + 10; //Desenha entre 10 e 99 estrelas
+        for(int i = 0; i < numberOfStars; i++) {
+            //Gerar coordenadas aleatorias para as estrelas
+            qreal randomX = rand() % (int)xmax;
+            qreal randomY = rand() % (int)ymax/2; //Metade da tela para cima
+            poligonos.push_back(Poligono({randomX, randomY, 1, 1}, Qt::white));
+        }
 
-    //Botoes relacionados a movimentacao de camera
-    QPushButton *botaoMoverEsq, *botaoMoverDir, *botaoMoverCima, *botaoMoverBaixo, *botaoZoomIn, *botaoZoomOut;
+        //Detalhes da grama
+        int numberOfDetails = rand() % 900 + 100; //Desenha entre 100 e 999 detalhes
+        for(int i = 0; i < numberOfDetails; i++) {
+            //Gerar coordenadas aleatorias para os detalhes
+            qreal randomX = rand() % (int)xmax;
+            qreal randomY = rand() % (int)ymax/2 + ymax/2; //metade da tela para baixo
+            poligonos.push_back(Poligono({randomX, randomY, 1, 1}, QColor(0, 150, 0)));
+        }
 
-    //Construtor da classe ButtonContainer
-    ButtonContainer(QWidget *parent = nullptr) : QWidget(parent) {
-        botaoReta = new QPushButton("Desenhar Reta", this);
-        botaoReta->move(10, 10);
+        //Cerca
+        for(int x = xmin; x < xmax; x += 50) {
+            Poligono p({(qreal)x, ymax/2, 1, 1,
+                        (qreal)x, ymax/2 - 125, 1, 1,
+                        (qreal)x + 25, ymax/2 - 150, 1, 1,
+                        (qreal)x + 50, ymax/2 - 125, 1, 1,
+                        (qreal)x + 50, ymax/2, 1, 1},
+                        Qt::white);
+            p.setCorCaneta(Qt::black);
+            poligonos.push_back(p);
+        }
 
-        botaoPonto = new QPushButton("Desenhar Ponto", this);
-        botaoPonto->move(10, 40);
+        //Tronco da arvore
+        poligonos.push_back(Poligono({300, 600, 1, 1,
+                                      310, 400, 1, 1,
+                                      290, 390, 1, 1,
+                                      320, 390, 1, 1,
+                                      330, 400, 1, 1,
+                                      340, 390, 1, 1,
+                                      360, 390, 1, 1,
+                                      350, 400, 1, 1,
+                                      340, 600, 1, 1},
+                                     QColor(69,69,69)));
 
-        botaoTriangulo = new QPushButton("Desenhar Triângulo", this);
-        botaoTriangulo->move(10, 70);
+        //Folhas da árvore
+        poligonos.push_back(Poligono({270, 390, 1, 1,
+                                      230, 315, 1, 1,
+                                      200, 300, 1, 1,
+                                      160, 200, 1, 1,
+                                      200, 150, 1, 1,
+                                      220, 120, 1, 1,
+                                      250, 120, 1, 1,
+                                      350, 150, 1, 1,
+                                      400, 220, 1, 1,
+                                      450, 250, 1, 1,
+                                      450, 290, 1, 1,
+                                      440, 330, 1, 1,
+                                      400, 350, 1, 1,
+                                      390, 370, 1, 1,
+                                      380, 380, 1, 1,
+                                      370, 390, 1, 1},
+                                     QColor(0,85,0)));
 
-        botaoPoligono = new QPushButton("Desenhar Polígono", this);
-        botaoPoligono->move(10, 430);
+        //Arbusto
+        poligonos.push_back(Poligono({500, 500, 1, 1,
+                                      450, 475, 1, 1,
+                                      455, 470, 1, 1,
+                                      485, 450, 1, 1,
+                                      505, 435, 1, 1,
+                                      600, 435, 1, 1,
+                                      610, 440, 1, 1,
+                                      630, 460, 1, 1,
+                                      625, 490, 1, 1,
+                                      595, 500, 1, 1},
+                                     QColor(0,85,0)));
 
-        botaoSelecionar = new QPushButton("Selecionar Objeto", this);
-        botaoSelecionar->move(10, 100);
+        poligonos.push_back(
+            Poligono({520, 470, 1, 1,
+                                      560, 475, 1, 1,
+                                      525, 455, 1, 1},
+                                     QColor(0, 150, 0)));
 
-        botaoCor = new QPushButton("Mudar Cor", this);
-        botaoCor->move(10, 460);
-
-        botaoTransladar = new QPushButton("Transladar", this);
-        botaoTransladar->move(10, 130);
-
-        botaoRotacionar = new QPushButton("Rotacionar", this);
-        botaoRotacionar->move(10, 160);
-
-        botaoEscalar = new QPushButton("Escalar", this);
-        botaoEscalar->move(10, 190);
-
-        botaoDigitar = new QPushButton("Digitar coordenadas", this);
-        botaoDigitar->move(10, 220);
-
-        botaoMoverEsq = new QPushButton("<", this);
-        botaoMoverEsq->move(10, 250);
-
-        botaoMoverDir = new QPushButton(">", this);
-        botaoMoverDir->move(10, 280);
-
-        botaoMoverCima = new QPushButton("^", this);
-        botaoMoverCima->move(10, 310);
-
-        botaoMoverBaixo = new QPushButton("v", this);
-        botaoMoverBaixo->move(10, 340);
-
-        botaoZoomIn = new QPushButton("+", this);
-        botaoZoomIn->move(10, 370);
-
-        botaoZoomOut = new QPushButton("-", this);
-        botaoZoomOut->move(10, 400);
+        //Detalhes do arbusto
+        poligonos.push_back(Poligono({600, 445, 1, 1,
+                                      605, 470, 1, 1,
+                                      585, 440, 1, 1},
+                                     QColor(0, 150, 0)));
     }
+
+    void desenhar(QPainter &painter) {
+        for(Poligono p : poligonos) {
+            p.desenhar(painter);
+        }
+    }
+
+private:
+    QList<Poligono> poligonos;
+};
+
+class Inimigo {
+public:
+    QList<Poligono *> poligonos;
+
+    Inimigo() {
+        QPen cor1 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord1 = {251.809, 237.746, 1, 1};
+        poligono1 = new Poligono(coord1, cor1);
+        poligonos.push_back(poligono1);
+
+        QPen cor2 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord2 = {174.772, 91.7814, 1, 1, 308.573, 87.7268, 1, 1, 377.5, 189.091, 1, 1, 379.528, 304.646, 1, 1, 324.791, 371.547, 1, 1, 219.372, 371.547, 1, 1, 154.499, 308.701, 1, 1, 150.444, 174.9, 1, 1};
+        poligono2 = new Poligono(coord2, cor2);
+        poligonos.push_back(poligono2);
+
+        QPen cor3 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord3 = { 255.863, 140.436, 1, 1, 217.345, 176.927, 1, 1, 219.372, 253.964, 1, 1, 261.945, 296.537, 1, 1, 300.463, 251.937, 1, 1, 298.436, 176.927, 1, 1};
+        poligono3 = new Poligono(coord3, cor3);
+        poligonos.push_back(poligono3);
+
+        QPen cor4 (QColor::fromRgbF( 1, 1, 1),2);
+        QList<qreal> coord4 = { 257.89, 172.873, 1, 1, 261.945, 258.019, 1, 1};
+        poligono4 = new Poligono(coord4, cor4);
+        poligonos.push_back(poligono4);
+
+        QPen cor5 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord5 = { 227.481, 326.947, 1, 1, 302.491, 324.919, 1, 1};
+        poligono5 = new Poligono(coord5, cor5);
+        poligonos.push_back(poligono5);
+
+        QPen cor6 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord6 = { 227.556, 326.421, 1, 1, 235.365, 341.438, 1, 1, 239.57, 325.82, 1, 1};
+        poligono6 = new Poligono(coord6, cor6);
+        poligonos.push_back(poligono6);
+
+        QPen cor7 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord7 = { 291.829, 324.018, 1, 1, 299.037, 339.035, 1, 1, 302.641, 324.018, 1, 1};
+        poligono7 = new Poligono(coord7, cor7);
+        poligonos.push_back(poligono7);
+
+        QPen cor8 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord8 = { 230.56, 326.421, 1, 1, 217.945, 313.206, 1, 1};
+        poligono8 = new Poligono(coord8, cor8);
+        poligonos.push_back(poligono8);
+
+        QPen cor9 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord9 = {299.037, 325.82, 1, 1, 309.248, 314.408, 1, 1};
+        poligono9 = new Poligono(coord9, cor9);
+        poligonos.push_back(poligono9);
+
+        QPen cor10 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord10 = {164.352, 124.66, 1, 1, 130.18, 80.9961, 1, 1, 159.605, 7.90625, 1, 1, 161.504, 80.0469, 1, 1, 170.047, 102.828, 1, 1};
+        poligono10 = new Poligono(coord10, cor10);
+        poligonos.push_back(poligono10);
+
+        QPen cor11 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord11 = {320.973, 105.676, 1, 1, 334.262, 82.8945, 1, 1, 303.887, 5.05859, 1, 1, 375.078, 85.7422, 1, 1, 337.109, 128.457, 1, 1};
+        poligono11 = new Poligono(coord11, cor11);
+        poligonos.push_back(poligono11);
+
+        QPen cor12 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord12 = {152.012, 252.805, 1, 1, 97.9063, 300.266, 1, 1};
+        poligono12 = new Poligono(coord12, cor12);
+        poligonos.push_back(poligono12);
+
+        QPen cor13 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord13 = {96.957, 300.266, 1, 1, 129.23, 347.727, 1, 1};
+        poligono13 = new Poligono(coord13, cor13);
+        poligonos.push_back(poligono13);
+
+        QPen cor14 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord14 = {129.125, 347.516, 1, 1, 149.375, 351.313, 1, 1, 131.234, 363.547, 1, 1};
+        poligono14 = new Poligono(coord14, cor14);
+        poligonos.push_back(poligono14);
+
+        QPen cor15 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord15 = {131.656, 362.703, 1, 1, 142.625, 373.25, 1, 1, 138.828, 357.219, 1, 1};
+        poligono15 = new Poligono(coord15, cor15);
+        poligonos.push_back(poligono15);
+
+        QPen cor16 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord16 = {138.406, 349.203, 1, 1, 144.313, 338.656, 1, 1, 144.734, 350.891, 1, 1};
+        poligono16 = new Poligono(coord16, cor16);
+        poligonos.push_back(poligono16);
+
+        QPen cor17 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord17 = {141.359, 355.109, 1, 1, 150.641, 363.547, 1, 1, 146.422, 351.313, 1, 1};
+        poligono17 = new Poligono(coord17, cor17);
+        poligonos.push_back(poligono17);
+
+        QPen cor18 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord18 = {378.5, 253.5, 1, 1, 416, 301.5, 1, 1};
+        poligono18 = new Poligono(coord18, cor18);
+        poligonos.push_back(poligono18);
+
+        QPen cor19 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord19 = {415, 300.5, 1, 1, 384, 349.5, 1, 1};
+        poligono19 = new Poligono(coord19, cor19);
+        poligonos.push_back(poligono19);
+
+        QPen cor20 (QColor::fromRgbF( 1, 0, 0),2);
+        QList<qreal> coord20 = {383.5, 349, 1, 1, 369.5, 351, 1, 1, 385, 365.5, 1, 1};
+        poligono20 = new Poligono(coord20, cor20);
+        poligonos.push_back(poligono20);
+
+        QPen cor21 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord21 = {369, 350.5, 1, 1, 365, 362, 1, 1, 374, 355, 1, 1};
+        poligono21 = new Poligono(coord21, cor21);
+        poligonos.push_back(poligono21);
+
+        QPen cor22 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord22 = {378.5, 359, 1, 1, 372.5, 369.5, 1, 1, 384.5, 363, 1, 1};
+        poligono22 = new Poligono(coord22, cor22);
+        poligonos.push_back(poligono22);
+
+        QPen cor23 (QColor::fromRgbF( 1, 0.666667, 0),2);
+        QList<qreal> coord23 = {149, 63, 1, 1};
+        poligono23 = new Poligono(coord23, cor23);
+        poligonos.push_back(poligono23);
+
+        //Mover inimigo
+        int randomX = rand() % 1000;
+        int randomY = rand() % 300 + 200; //metade da tela para baixo
+        move(randomX, randomY);
+    }
+
+    void move(int a, int b){
+        QPointF F(a,b);
+
+        for(Poligono *p : poligonos) {
+            p->transladar(F);
+        }
+    }
+
+    void rotate(qreal angle) {
+        for(Poligono *p : poligonos) {
+            p->rotacionar(angle, poligono2->determinarCentro());
+        }
+    }
+    void correr() {
+        for(Poligono *p : poligonos) {
+            p->escalar(1.001,1.001, poligono2->determinarCentro());
+        }
+    }
+
+    void desenhar(QPainter &painter, int *contInimigos){
+        if(inimigoSelecionado) {
+            if(contMovimentacao < 500) {
+                //Fazer o inimigo "morrer"
+                rotate(90);
+                contMovimentacao = 500;
+            }
+
+            if(contMovimentacao > 550) {
+                //Inimigo morto
+                *contInimigos = *contInimigos - 1;
+                inimigoMorto = true;
+                return; //Nao renderizar o inimigo
+            }
+        }
+        else if(contMovimentacao < 500) {
+            //Movimentar o inimigo
+            correr();
+        }
+
+        //Desenhar o inimigo
+        for(Poligono *p : poligonos) {
+            p->desenhar(painter);
+        }
+
+        contMovimentacao++; //Indica que o inimigo se mexeu
+    }
+
+    void selectInimigo() {
+        inimigoSelecionado = true;
+    }
+
+    bool getInimigoMorto() {
+        return inimigoMorto;
+    }
+
+private:
+    int contMovimentacao = 0;
+    bool inimigoSelecionado = false, inimigoMorto = false;
+    Poligono *poligono1, *poligono2, *poligono3, *poligono4, *poligono5,
+        *poligono6, *poligono7, *poligono8, *poligono9, *poligono10,
+        *poligono11, *poligono12, *poligono13, *poligono14, *poligono15,
+        *poligono16, *poligono17, *poligono18, *poligono19, *poligono20,
+        *poligono21, *poligono22, *poligono23;
 };
 
 class Canvas : public QWidget {
 public:
-    Canvas(QWidget *parent = nullptr) : QWidget(parent) {}
+    QList<ObjetoGrafico*> displayFile;
+
+    Canvas(QWidget *parent = nullptr) : QWidget(parent) {
+        btnCenario1 = new QPushButton("Cenário 1", this);
+        btnCenario1->move(10, 10);
+        connect(btnCenario1, &QPushButton::clicked, this, &Canvas::cenario1);
+    }
 
 protected:
+    //Loop que desenha na tela
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
 
-        //Desenhar grama
-        Poligono *q1 = new Poligono({-10000, 10000, 1, 1, -10000, 500, 1, 1, 10000, 500, 1, 1, 10000, 10000, 1, 1}, QPen(Qt::green, tamanhoCaneta));
-        q1->desenhar(painter);
+        //Criar cenario se ja nao estiver criado
+        if(c1 == nullptr) {
+            xminViewport = 0;
+            yminViewport = 0;
+            xmaxViewport = this->width(); //Largura da janela
+            ymaxViewport = this->height(); //Altura da janela
 
-        int contObj = 0;
-        for (ObjetoGrafico* objeto : displayFile) {
-            objeto->desenhar(painter);
-
-            if(objeto->getContEscala() % 200 == 0) {
-                Poligono *p = new Poligono({(qreal) (rand() % this->width()), (qreal) (rand() % this->height()), 1, 1}, QPen(Qt::black, tamanhoCaneta));
-                displayFile.push_back(p);
-            }
-
-            if(objeto->getContEscala() < 1000) {
-                objeto->escalar(1.001, 1.001);
-            }
-            else {
-                displayFile.remove(contObj);
-                objeto->deletar();
-            }
-            contObj++;
+            c1 = new Cenario(xminViewport, xmaxViewport, yminViewport, ymaxViewport);
         }
+
+        //Desenhar o cenario
+        c1->desenhar(painter);
+
+        if(contInimigos < dificuldade) {
+            inimigos.push_back(new Inimigo());
+            contInimigos++;
+        }
+
+        for(Inimigo *i : inimigos) {
+            if(i->getInimigoMorto() == false) {
+                i->desenhar(painter, &contInimigos);
+            }
+        }
+
+        //A cada 1000 loops aumentar a dificuldade
+        if(cont == 1000) {
+            dificuldade++;
+            cont = -1;
+        }
+
+        cont++;
         update();
     }
 
@@ -531,19 +786,18 @@ protected:
         //Obter coordenadas do clique do mouse
         QPointF clickPoint = event->pos();
 
-        Poligono *p1 = new Poligono({(qreal) this->rect().center().x() - 1, (qreal) this->rect().center().y() - 1, 1, 1}, QPen(Qt::black, tamanhoCaneta));
-        displayFile.push_back(p1);
-
-        objetoSelecionado = nullptr;
-        for (ObjetoGrafico *objeto : displayFile) {
-            if (objeto->contemPonto(clickPoint)) {
-                objeto->selecionar(true);
-                objetoSelecionado = objeto;
-            } else {
-                objeto->selecionar(false);
+        //objetoSelecionado = nullptr;
+        for(Inimigo *i : inimigos) {
+            for (Poligono *p : i->poligonos) {
+                if (p->contemPonto(clickPoint)) {
+                    p->selecionar(true);
+                    i->selectInimigo();
+                    //objetoSelecionado = p;
+                } else {
+                    p->selecionar(false);
+                }
             }
         }
-        update();
     }
 
     void keyPressEvent(QKeyEvent *event) override {
@@ -553,90 +807,14 @@ protected:
 
         if(event->key() == Qt::Key_Left || event->key() == Qt::Key_A) {
             //Mover Esquerda
-            for(ObjetoGrafico *objeto : displayFile) {
-                int moveFactor = 10;
-                for(int i = 0; i < objeto->coordenadas.size(); i += 4) {
-                    objeto->coordenadas[i] -= (objeto->coordenadas[i] - this->width()) * 0.01;
-                }
-            }
-
-            xminWindow -= 0.05;
-            xmaxWindow -= 0.05;
-
-            update();
         }
 
         if(event->key() == Qt::Key_Right || event->key() == Qt::Key_D) {
-            //Centro da tela
-            QPointF center = this->rect().center();
-
             //Mover Direita
-            for(ObjetoGrafico *objeto : displayFile) {
-                for(int i = 0; i < objeto->coordenadas.size(); i += 4) {
-                    if(objeto->coordenadas[i] < center.x()) {
-                        if(objeto->coordenadas[i+1] < center.y()) {
-                            objeto->coordenadas[i+1] += (objeto->coordenadas[i] - center.x()) * 0.005;
-                        }
-                        else {
-                            objeto->coordenadas[i+1] -= (objeto->coordenadas[i] - center.x()) * 0.005;
-                        }
-                    }
-                    else {
-                        if(objeto->coordenadas[i+1] < center.y()) {
-                            objeto->coordenadas[i+1] -= (objeto->coordenadas[i] - center.x()) * 0.005;
-                        }
-                        else {
-                            objeto->coordenadas[i+1] += (objeto->coordenadas[i] - center.x()) * 0.005;
-                        }
-                    }
-
-                    objeto->coordenadas[i] -= 10;
-                }
-            }
-
-            xminWindow += 0.05;
-            xmaxWindow += 0.05;
-
-            update();
         }
     }
 
 public slots:
-    void trocarCor() {
-        if (selecionando && objetoSelecionado) {
-            QColor newColor = QColorDialog::getColor(objetoSelecionado->getCor(), this, "Selecione uma Cor", QColorDialog::ShowAlphaChannel);
-
-            if (newColor.isValid()) {
-                objetoSelecionado->setCor(newColor);
-                update();
-            }
-        }
-    }
-
-    void digitarCoordenadas() {
-        bool ok;
-        QString input = QInputDialog::getText(nullptr, "Digite as coordenadas", "X, Y:", QLineEdit::Normal, "1.0, 1.0", &ok);
-
-        if (ok) {
-            QStringList parts = input.split(',');
-            if (parts.size() == 2) {
-                qreal xWindow = parts[0].trimmed().toDouble();
-                qreal yWindow = parts[1].trimmed().toDouble();
-
-                //Transformada de Viewport
-                qreal xViewport = ((xWindow - xminWindow) / (xmaxWindow - xminWindow)) * (xmaxViewport - xminViewport);
-                qreal yViewport = (1 - ((yWindow - yminWindow) / (ymaxWindow - yminWindow))) * (ymaxViewport - yminViewport);
-
-                //Criar o objeto ponto
-                Ponto* ponto = new Ponto({xViewport, yViewport}, QPen(Qt::black, tamanhoCaneta));
-
-                //Inserir no displayFile
-                displayFile.push_back(ponto);
-                update();
-            }
-        }
-    }
-
     void selecionar() {
         selecionando = !selecionando;
         if (!selecionando) {
@@ -648,139 +826,26 @@ public slots:
         }
     }
 
-    void transladar() {
-        if (selecionando && objetoSelecionado) {
-            bool ok;
-            QString input = QInputDialog::getText(nullptr, "Digite as Coordenadas de Translação", "X, Y:", QLineEdit::Normal, "0, 0", &ok);
-
-            if(ok) {
-                QStringList parts = input.split(',');
-
-                if (parts.size() == 2) {
-                    qreal x = parts[0].trimmed().toDouble();
-                    qreal y = parts[1].trimmed().toDouble();
-
-                    //Transformar delta em coordenadas window para viewport
-                    qreal xViewport = x * (xmaxViewport/2); //x * 300
-                    qreal yViewport = y * -(ymaxViewport/2); //y * -300
-
-                    objetoSelecionado->transladar(QPointF(xViewport, yViewport)); // Realiza a translação do objeto
-                    update();
-                }
-            }
-        }
-    }
-
-    void rotacionar() {
-        if (selecionando && objetoSelecionado) {
-            bool ok;
-            QString input = QInputDialog::getText(nullptr, "Digite o Ângulo de Rotação", "Ângulo:", QLineEdit::Normal, "0.0", &ok);
-
-            if (ok) {
-                qreal rotationAngle = input.toDouble(); // Converte a entrada do usuário para um número de ponto flutuante
-                objetoSelecionado->rotacionar(rotationAngle);
-                update();
-            }
-        }
-    }
-
-    void escalar() {
-        if (selecionando && objetoSelecionado) {
-            bool ok;
-            QString input = QInputDialog::getText(nullptr, "Digite os Fatores de Escala", "X, Y:", QLineEdit::Normal, "1.0, 1.0", &ok);
-
-            if (ok) {
-                QStringList parts = input.split(',');
-                if (parts.size() == 2) {
-                    qreal x = parts[0].trimmed().toDouble();
-                    qreal y = parts[1].trimmed().toDouble();
-
-                    objetoSelecionado->escalar(x, y); // Realiza a escala em torno do centro geométrico
-                    update();
-                }
-            }
-        }
-    }
-
-    void moverEsquerda() {
-
-    }
-
-    void moverDireita() {
-
-    }
-
-    void moverCima() {
-        for(ObjetoGrafico *objeto : displayFile) {
-            for(int i = 1; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] += 150;
-            }
-        }
-
-        yminWindow += 0.5;
-        ymaxWindow += 0.5;
-
+    void cenario1() {
+        desenharCenario1 = true;
+        //desenharCenario2 = false;
         update();
     }
-
-    void moverBaixo() {
-        for(ObjetoGrafico *objeto : displayFile) {
-            for(int i = 1; i < objeto->coordenadas.size(); i += 2) {
-                objeto->coordenadas[i] -= 150;
-            }
-        }
-
-        yminWindow -= 0.5;
-        ymaxWindow -= 0.5;
-
-        update();
-    }
-
-    void zoomIn() {
-        QPointF center = this->rect().center();
-
-        for(ObjetoGrafico *objeto : displayFile) {
-            for(int i = 0; i < objeto->coordenadas.size(); i += 2) {
-                //Zoom no eixo x
-                objeto->coordenadas[i] += (objeto->coordenadas[i] - center.x()) * 0.5;
-
-                //Zoom no eixo y
-                objeto->coordenadas[i+1] += (objeto->coordenadas[i+1] - center.y()) * 0.5;
-            }
-        }
-        update();
-    }
-
-    void zoomOut() {
-        QPointF center = this->rect().center();
-
-        for(ObjetoGrafico *objeto : displayFile) {
-            for(int i = 0; i < objeto->coordenadas.size(); i += 2) {
-                //Zoom no eixo x
-                objeto->coordenadas[i] -= (objeto->coordenadas[i] - center.x()) * 0.5;
-
-                //Zoom no eixo y
-                objeto->coordenadas[i+1] -= (objeto->coordenadas[i+1] - center.y()) * 0.5;
-            }
-        }
-        update();
-    }
-
-    /*
-    // Função para mapear coordenadas normalizadas para a tela
-    QPoint mapToScreen(const QPointF& point) {
-        int x = static_cast<int>((point.x() - minX) / (maxX - minX) * width());
-        int y = static_cast<int>((1.0 - point.y() - minY) / (maxY - minY) * height());
-        return QPoint(x, y);
-    }
-    */
 
 private:
-    int tamanhoCaneta = 2;
+    //Para uso ao desenhar cenarios
+    Cenario *c1 = nullptr;
+    QPushButton *btnCenario1;
+    bool desenharCenario1 = false;
+
+    //Desenhar inimigos
+    int cont = 0, contInimigos = 0;
+    QList<Inimigo *> inimigos;
+
+    int dificuldade = 1;
 
     // Coordenadas viewport
-    qreal xminViewport = 0, xmaxViewport = 600;
-    qreal yminViewport = 0, ymaxViewport = 600;
+    qreal xminViewport, xmaxViewport, yminViewport, ymaxViewport;
 
     // Coordenadas window
     qreal xminWindow = -1, xmaxWindow = 1;
@@ -789,17 +854,13 @@ private:
     QPointF pontoInicial, pontoFinal;
     int contadorCliques = 0, numPontos;
 
-    bool desenharReta = false;
-    bool desenharPonto = false;
-    bool desenharTriangulo = false;
-    bool desenharPoligono = false;
-
     bool selecionando = false;
     ObjetoGrafico* objetoSelecionado = nullptr;
 
     QVector<qreal> clickCoordinates;
-    QList<ObjetoGrafico*> displayFile;
 };
+
+
 
 int main(int argc, char *argv[])
 {
@@ -807,7 +868,7 @@ int main(int argc, char *argv[])
 
     Canvas *window = new Canvas;
     window->setWindowTitle("Canvas - Qt");
-    window->setStyleSheet("background-color: #2d91c2;");
+    //window->setStyleSheet("background-color: #2d91c2;");
     window->showFullScreen();
 
     return app.exec();
